@@ -1,11 +1,9 @@
-name: Microservice docker image build.
+name: Multi arch docker build.
 
 on:
   push:
     branches:
       - "*"
-
-env:
 
 jobs:
   prepare:
