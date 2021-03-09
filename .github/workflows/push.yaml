@@ -35,7 +35,7 @@ jobs:
           echo "::set-output name=RELEASE_VERSION::1.$TMP_GITHUB_COMMITS_COUNT.$TMP_GITHUB_COUNT_NUMBER"
 
   build:
-    needs: [ prepare, test, code_scans ]
+    needs: [ prepare ]
     name: Docker image build (multiarch)
     runs-on: ubuntu-latest
     steps:
