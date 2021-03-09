@@ -15,10 +15,7 @@ RUN apk --no-cache add \
     python2 \
     python3
 
-# Install Bazel 3 from edge testing repository
-RUN apk --no-cache add \
-    bazel3 \
-    --repository=http://dl-cdn.alpinelinux.org/alpine/edge/testing
+RUN apk --no-cache add bazel3
 
 # Checkout rTorrent sources from current directory
 COPY . ./
@@ -62,6 +59,7 @@ RUN cp -r /etc/terminfo /root/sysroot/etc/terminfo
 
 # Create 1001:1001 user
 RUN mkdir -p /root/sysroot/home/download
+RUN chown 1001:1001 /root/sysroot/home/download
 
 FROM scratch as rtorrent
 
@@ -69,6 +67,7 @@ COPY --from=build-sysroot /root/sysroot /
 
 # Run as 1001:1001 user
 ENV HOME=/home/download
+USER 1001:1001
 
 # rTorrent
 ENTRYPOINT ["rtorrent"]
