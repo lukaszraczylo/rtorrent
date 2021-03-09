@@ -1,4 +1,4 @@
-ARG ALPINE_IMAGE=alpine
+ARG ALPINE_IMAGE=alpine:3.13
 
 FROM ${ALPINE_IMAGE} as build
 
@@ -62,7 +62,6 @@ RUN cp -r /etc/terminfo /root/sysroot/etc/terminfo
 
 # Create 1001:1001 user
 RUN mkdir -p /root/sysroot/home/download
-RUN chown 1001:1001 /root/sysroot/home/download
 
 FROM scratch as rtorrent
 
@@ -70,7 +69,6 @@ COPY --from=build-sysroot /root/sysroot /
 
 # Run as 1001:1001 user
 ENV HOME=/home/download
-USER 1001:1001
 
 # rTorrent
 ENTRYPOINT ["rtorrent"]
