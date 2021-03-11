@@ -32,6 +32,7 @@ RUN chmod +x /usr/bin/rtorrent
 RUN apk --no-cache add \
     ca-certificates \
     ncurses-terminfo-base
+RUN adduser -h /home/download -s /sbin/nologin --disabled-password download
 # Run as 1001:1001 user
 ENV HOME=/home/download
 USER 1001:1001
