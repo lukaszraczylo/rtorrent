@@ -29,9 +29,9 @@ COPY . ./
 
 # Set architecture for .deb package
 RUN if [[ `uname -m` == "aarch64" ]]; \
-    then wget https://github.com/jesec/rtorrent/releases/download/v0.9.8-r7/rtorrent-linux-arm64; mv rtorrent-linux-arm64 rtorrent; \
+    then wget https://github.com/jesec/rtorrent/releases/download/v0.9.8-r14/rtorrent-linux-arm64; mv rtorrent-linux-arm64 rtorrent; \
     elif [[ `uname -m` == "x86_64" ]]; \
-    then wget https://github.com/jesec/rtorrent/releases/download/v0.9.8-r7/rtorrent-linux-amd64; mv rtorrent-linux-amd64 rtorrent; \
+    then wget https://github.com/jesec/rtorrent/releases/download/v0.9.8-r14/rtorrent-linux-amd64; mv rtorrent-linux-amd64 rtorrent; \
     fi
 
 # Now get the clean image
