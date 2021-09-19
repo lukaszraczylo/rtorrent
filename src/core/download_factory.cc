@@ -15,6 +15,7 @@
 #include <torrent/utils/log.h>
 #include <torrent/utils/path.h>
 #include <torrent/utils/resume.h>
+#include <torrent/utils/string_manip.h>
 
 #include "rpc/parse_commands.h"
 
@@ -382,6 +383,10 @@ DownloadFactory::receive_success() {
     }
   }
 
+  if (m_immediate) {
+    m_result = torrent::utils::transform_hex_str<torrent::HashString>(infohash);
+  }
+
   m_slot_finished();
 }
 
@@ -428,6 +433,8 @@ DownloadFactory::log_created(Download* download, torrent::Object* rtorrent) {
 
 void
 DownloadFactory::receive_failed(const std::string& msg) {
+  bool shouldThrow = m_immediate;
+
   // Add message to log.
   if (m_printLog) {
     m_manager->push_log_std(msg + ": \"" + m_uri + "\"");
@@ -435,7 +442,7 @@ DownloadFactory::receive_failed(const std::string& msg) {
 
   m_slot_finished();
 
-  if (m_immediate) {
+  if (shouldThrow) {
     throw torrent::input_error(msg);
   }
 }
@@ -464,6 +471,7 @@ DownloadFactory::initialize_rtorrent(Download*        download,
 
   rtorrent->insert_preserve_copy("timestamp.started", (int64_t)0);
   rtorrent->insert_preserve_copy("timestamp.finished", (int64_t)0);
+  rtorrent->insert_preserve_copy("timestamp.last_active", (int64_t)0);
 
   rtorrent->insert_preserve_copy("tied_to_file", "");
   rtorrent->insert_key("loaded_file", m_isFile ? m_uri : std::string());

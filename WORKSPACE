@@ -1,12 +1,12 @@
 workspace(name = "rtorrent")
 
-load("@bazel_tools//tools/build_defs/repo:git.bzl", "git_repository")
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 
-git_repository(
+http_archive(
     name = "libtorrent",
-    branch = "master",
-    remote = "https://github.com/jesec/libtorrent.git",
+    sha256 = "e67df3f7435319fa8ffa8c6e5acaa6c31748bbb2fb5ca4097132025517642906",
+    strip_prefix = "libtorrent-899c6cbc9e548f58149da2682879479d66337ff6",
+    url = "https://github.com/jesec/libtorrent/archive/899c6cbc9e548f58149da2682879479d66337ff6.zip",
 )
 
 load("@libtorrent//:libtorrent_repos.bzl", "libtorrent_repos")
@@ -32,8 +32,11 @@ bazel_skylib_workspace()
 
 http_archive(
     name = "rules_pkg",
-    sha256 = "6b5969a7acd7b60c02f816773b06fcf32fbe8ba0c7919ccdc2df4f8fb923804a",
-    url = "https://github.com/bazelbuild/rules_pkg/releases/download/0.3.0/rules_pkg-0.3.0.tar.gz",
+    sha256 = "038f1caa773a7e35b3663865ffb003169c6a71dc995e39bf4815792f385d837d",
+    urls = [
+        "https://mirror.bazel.build/github.com/bazelbuild/rules_pkg/releases/download/0.4.0/rules_pkg-0.4.0.tar.gz",
+        "https://github.com/bazelbuild/rules_pkg/releases/download/0.4.0/rules_pkg-0.4.0.tar.gz",
+    ],
 )
 
 load("@rules_pkg//:deps.bzl", "rules_pkg_dependencies")
@@ -42,22 +45,23 @@ rules_pkg_dependencies()
 
 http_archive(
     name = "cares",
-    build_file = "@rtorrent//:third_party/cares/cares.BUILD",
-    sha256 = "6cdb97871f2930530c97deb7cf5c8fa4be5a0b02c7cea6e7c7667672a39d6852",
-    strip_prefix = "c-ares-1.15.0",
+    build_file = "@rtorrent//:third_party/cares.BUILD",
+    sha256 = "d73dd0f6de824afd407ce10750ea081af47eba52b8a6cb307d220131ad93fc40",
+    strip_prefix = "c-ares-1.17.1",
     urls = [
-        "https://github.com/c-ares/c-ares/releases/download/cares-1_15_0/c-ares-1.15.0.tar.gz",
+        "https://github.com/c-ares/c-ares/releases/download/cares-1_17_1/c-ares-1.17.1.tar.gz",
+        "https://c-ares.haxx.se/download/c-ares-1.17.1.tar.gz",
     ],
 )
 
 http_archive(
     name = "curl",
     build_file = "@rtorrent//:third_party/curl.BUILD",
-    sha256 = "01ae0c123dee45b01bbaef94c0bc00ed2aec89cb2ee0fd598e0d302a6b5e0a98",
-    strip_prefix = "curl-7.69.1",
+    sha256 = "b0a3428acb60fa59044c4d0baae4e4fc09ae9af1d8a3aa84b2e3fbcd99841f77",
+    strip_prefix = "curl-7.77.0",
     urls = [
-        "https://github.com/curl/curl/releases/download/curl-7_69_1/curl-7.69.1.tar.gz",
-        "https://curl.haxx.se/download/curl-7.69.1.tar.gz",
+        "https://github.com/curl/curl/releases/download/curl-7_77_0/curl-7.77.0.tar.gz",
+        "https://curl.haxx.se/download/curl-7.77.0.tar.gz",
     ],
 )
 
@@ -83,24 +87,22 @@ http_archive(
 
 http_archive(
     name = "com_google_absl",
-    sha256 = "00c3707bf9cd5eabd1ec6932cc65b97378c043f22573be3adf7d11bb7af17d06",
-    strip_prefix = "abseil-cpp-f3f785ab59478dd0312bf1b5df65d380650bf0dc",
-    urls = ["https://github.com/abseil/abseil-cpp/archive/f3f785ab59478dd0312bf1b5df65d380650bf0dc.zip"],
+    sha256 = "59b862f50e710277f8ede96f083a5bb8d7c9595376146838b9580be90374ee1f",
+    strip_prefix = "abseil-cpp-20210324.2",
+    urls = ["https://github.com/abseil/abseil-cpp/archive/refs/tags/20210324.2.tar.gz"],
 )
 
 http_archive(
     name = "com_google_googletest",
-    sha256 = "3519a051b20f0dd3a58e1dedd391a3cbd27eb70189afb1185dc4eaefe111211f",
-    strip_prefix = "googletest-1de637fbdd4ab0051229707f855eee76f5a3d5da",
-    urls = ["https://github.com/google/googletest/archive/1de637fbdd4ab0051229707f855eee76f5a3d5da.zip"],
+    sha256 = "b4870bf121ff7795ba20d20bcdd8627b8e088f2d1dab299a031c1034eddc93d5",
+    strip_prefix = "googletest-release-1.11.0",
+    urls = ["https://github.com/google/googletest/archive/refs/tags/release-1.11.0.tar.gz"],
 )
 
 # Foreign CC dependencies
-all_content = """filegroup(name = "all", srcs = glob(["**"]), visibility = ["//visibility:public"])"""
-
 http_archive(
     name = "xmlrpc",
-    build_file_content = all_content,
+    build_file = "@rtorrent//:third_party/xmlrpc.BUILD",
     patches = ["@rtorrent//:third_party/xmlrpc.patch"],
     sha256 = "93d81a32f4ecfeb914c05f77476ba0af2e6b93ef6673fafdc12878f71d70a276",
     strip_prefix = "xmlrpc-c-146e9bf7f8933c3baec871dfc2365e471171ddf4/advanced",

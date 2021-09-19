@@ -17,10 +17,12 @@
 
 #include <torrent/common.h>
 #include <torrent/hash_string.h>
+#include <torrent/torrent.h>
 
 #include "rpc/command.h"
 #include "rpc/command_map.h"
 #include "rpc/parse_commands.h"
+#include "thread_base.h"
 #include "utils/jsonrpc/common.h"
 
 using jsonrpccxx::JsonRpcException;
@@ -30,19 +32,24 @@ namespace rpc {
 
 void
 string_to_target(const std::string_view& targetString,
-                 int                     requireIndex,
+                 bool                    requireIndex,
                  rpc::target_type*       target) {
-  // <hash> or <hash>:f<index> or <hash>:t<index> or ''
+  // target_any: ''
+  // target_download: <hash>
+  // target_file: <hash>:f<index>
+  // target_peer: <hash>:p<index>
+  // target_tracker: <hash>:t<index>
+
   if (targetString.size() == 0 && !requireIndex) {
     return;
   }
 
   // Length of SHA1 hash is 40
   if (targetString.size() < 40) {
-    throw JsonRpcException(-32602, "invalid parameters: invalid target");
+    throw torrent::input_error("invalid parameters: invalid target");
   }
 
-  std::string      hash(targetString);
+  std::string_view hash;
   char             type = 'd';
   std::string_view index;
 
@@ -50,22 +57,29 @@ string_to_target(const std::string_view& targetString,
   if (delimPos == std::string_view::npos ||
       delimPos + 2 >= targetString.size()) {
     if (requireIndex) {
-      throw JsonRpcException(-32602, "invalid parameters: no index");
+      throw torrent::input_error("invalid parameters: no index");
     }
+    hash = targetString;
   } else {
     hash  = targetString.substr(0, delimPos);
     type  = targetString[delimPos + 1];
     index = targetString.substr(delimPos + 2);
   }
 
-  core::Download* download = rpc.slot_find_download()(hash.c_str());
+  // many internal functions expect C-style NULL-terminated strings
+
+  core::Download* download =
+    rpc.slot_find_download()(std::string(hash).c_str());
 
   if (download == nullptr) {
-    throw JsonRpcException(-32602, "invalid parameters: info-hash not found");
+    throw torrent::input_error("invalid parameters: info-hash not found");
   }
 
   try {
     switch (type) {
+      case 'd':
+        *target = rpc::make_target(download);
+        break;
       case 'f':
         *target = rpc::make_target(
           command_base::target_file,
@@ -82,16 +96,16 @@ string_to_target(const std::string_view& targetString,
           rpc.slot_find_peer()(download, std::string(index).c_str()));
         break;
       default:
-        *target = rpc::make_target(download);
-        break;
+        throw torrent::input_error(
+          "invalid parameters: unexpected target type");
     }
   } catch (const std::logic_error&) {
-    throw JsonRpcException(-32602, "invalid parameters: invalid index");
+    throw torrent::input_error("invalid parameters: invalid index");
   }
 
   if (target == nullptr || target->second == nullptr) {
-    throw JsonRpcException(
-      -32602, "invalid parameters: unable to find requested target");
+    throw torrent::input_error(
+      "invalid parameters: unable to find requested target");
   }
 }
 
@@ -112,12 +126,12 @@ json_to_object(const json& value, int callType, rpc::target_type* target) {
 
       if (callType != command_base::target_generic) {
         if (count < 1) {
-          throw JsonRpcException(-32602, "invalid parameters: too few");
+          throw torrent::input_error("invalid parameters: too few");
         }
 
         if (!value[0].is_string()) {
-          throw JsonRpcException(-32602,
-                                 "invalid parameters: target must be a string");
+          throw torrent::input_error(
+            "invalid parameters: target must be a string");
         }
 
         string_to_target(value[0].get<std::string_view>(),
@@ -146,14 +160,12 @@ json_to_object(const json& value, int callType, rpc::target_type* target) {
       }
     }
     default:
-      break;
+      throw torrent::input_error("invalid parameters: unexpected data type");
   }
-
-  throw JsonRpcException(-32600, "not implemented");
 }
 
 json
-object_to_json(const torrent::Object& object) {
+object_to_json(const torrent::Object& object) noexcept {
   switch (object.type()) {
     case torrent::Object::TYPE_VALUE:
       return object.as_value();
@@ -199,10 +211,8 @@ object_to_json(const torrent::Object& object) {
       return result;
     }
     default:
-      return json{ 0 };
+      return 0;
   }
-
-  throw JsonRpcException(-32600, "not implemented");
 }
 
 json
@@ -238,6 +248,9 @@ jsonrpc_call_command(const std::string& method, const json& params) {
     torrent::Object  object;
     rpc::target_type target = rpc::make_target();
 
+    torrent::thread_base::acquire_global_lock();
+    torrent::main_thread()->interrupt();
+
     if (itr->second.m_flags & CommandMap::flag_no_target) {
       json_to_object(params, command_base::target_generic, &target)
         .swap(object);
@@ -250,11 +263,15 @@ jsonrpc_call_command(const std::string& method, const json& params) {
       json_to_object(params, command_base::target_any, &target).swap(object);
     }
 
-    return object_to_json(rpc::commands.call_command(itr, object, target));
+    const auto& result = rpc::commands.call_command(itr, object, target);
 
+    torrent::thread_base::release_global_lock();
+    return object_to_json(result);
   } catch (torrent::input_error& e) {
+    torrent::thread_base::release_global_lock();
     throw JsonRpcException(-32602, e.what());
   } catch (torrent::local_error& e) {
+    torrent::thread_base::release_global_lock();
     throw JsonRpcException(-32000, e.what());
   }
 }

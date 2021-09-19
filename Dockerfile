@@ -7,7 +7,22 @@ WORKDIR /root/rtorrent
 # Install build dependencies
 RUN apk --no-cache add \
     bash \
-    wget
+    build-base \
+    coreutils \
+    gcompat \
+    git \
+    wget \
+    linux-headers \
+    python2 \
+    python3
+
+# Install Bazel
+RUN apk --no-cache add \
+    -Xhttps://dl-cdn.alpinelinux.org/alpine/edge/testing \
+    bazel
+
+# Checkout rTorrent sources from current directory
+COPY . ./
 
 # # Checkout rTorrent sources from Github repository
 # RUN git clone https://github.com/jesec/rtorrent .

@@ -128,20 +128,18 @@ DownloadList::create(std::istream* str) {
   torrent::Object*  object = new torrent::Object;
   torrent::Download download;
 
+  *str >> *object;
+  if (str->fail()) {
+    delete object;
+
+    throw torrent::input_error(
+      "Could not create download, the input is not a valid torrent.");
+
+    return nullptr;
+  }
+
   try {
-    *str >> *object;
-
-    if (str->fail()) {
-      delete object;
-
-      throw torrent::input_error(
-        "Could not create download, the input is not a valid torrent.");
-
-      return nullptr;
-    }
-
     download = torrent::download_add(object);
-
   } catch (torrent::local_error& e) {
     delete object;
 
@@ -166,10 +164,21 @@ DownloadList::insert(Download* download) {
                     "Inserting download.");
 
   try {
-    (*itr)->data()->slot_initial_hash() =
-      std::bind(&DownloadList::hash_done, this, download);
-    (*itr)->data()->slot_download_done() =
-      std::bind(&DownloadList::received_finished, this, download);
+    (*itr)->data()->slot_initial_hash() = [download, this]() {
+      this->hash_done(download);
+    };
+
+    (*itr)->data()->slot_download_done() = [download, this]() {
+      this->received_finished(download);
+    };
+
+    (*itr)->data()->slot_download_active() = [download, this]() {
+      this->received_active(download);
+    };
+
+    (*itr)->data()->slot_download_inactive() = [download, this]() {
+      this->received_inactive(download);
+    };
 
     // This needs to be separated into two different calls to ensure
     // the download remains in the view.
@@ -281,6 +290,10 @@ DownloadList::close_directly(Download* download) {
                     "Closing download directly.");
 
   if (download->download()->info()->is_active()) {
+    if (!download->connection_list()->empty()) {
+      DL_TRIGGER_EVENT(download, "event.download.inactive");
+    }
+
     download->download()->stop(torrent::Download::stop_skip_tracker);
 
     if (torrent::resume_check_target_files(
@@ -529,6 +542,10 @@ DownloadList::pause(Download* download, int flags) {
     if (!download->download()->info()->is_active())
       return;
 
+    if (!download->connection_list()->empty()) {
+      DL_TRIGGER_EVENT(download, "event.download.inactive");
+    }
+
     download->download()->stop(flags);
     torrent::resume_save_progress(
       *download->download(),
@@ -757,8 +774,8 @@ DownloadList::confirm_finished(Download* download) {
   torrent::Object conn_current = rpc::call_command(
     "d.connection_seed", torrent::Object(), rpc::make_target(download));
   torrent::Object choke_up   = rpc::call_command("d.up.choke_heuristics.seed",
-                                               torrent::Object(),
-                                               rpc::make_target(download));
+                                                 torrent::Object(),
+                                                 rpc::make_target(download));
   torrent::Object choke_down = rpc::call_command("d.down.choke_heuristics.seed",
                                                  torrent::Object(),
                                                  rpc::make_target(download));
@@ -842,6 +859,30 @@ DownloadList::confirm_finished(Download* download) {
            torrent::Download::start_no_create |
              torrent::Download::start_skip_tracker |
              torrent::Download::start_keep_baseline);
+}
+
+void
+DownloadList::received_active(Download* download) {
+  check_contains(download);
+
+  lt_log_print_info(torrent::LOG_TORRENT_DEBUG,
+                    download->info(),
+                    "download_list",
+                    "Received active.");
+
+  DL_TRIGGER_EVENT(download, "event.download.active");
+}
+
+void
+DownloadList::received_inactive(Download* download) {
+  check_contains(download);
+
+  lt_log_print_info(torrent::LOG_TORRENT_DEBUG,
+                    download->info(),
+                    "download_list",
+                    "Received inactive.");
+
+  DL_TRIGGER_EVENT(download, "event.download.inactive");
 }
 
 void

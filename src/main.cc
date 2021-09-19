@@ -6,12 +6,14 @@
 #include "buildinfo.h"
 
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
 #include <inttypes.h>
 #include <iostream>
 #include <queue>
 #include <random>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <unistd.h>
 
@@ -43,6 +45,7 @@
 #include "rpc/command_scheduler_item.h"
 #include "rpc/parse_commands.h"
 #include "utils/directory.h"
+#include "utils/indicators.h"
 
 #include "command_helpers.h"
 #include "control.h"
@@ -123,36 +126,25 @@ parse_options(int                                              argc,
   }
 }
 
-static unsigned long progress_count   = 0;
-static unsigned long progress_total   = 0;
-static uint8_t       progress_printed = 0;
-
-static void
-print_progress() {
-  if (progress_total != 0) {
-    ++progress_count;
-    if (progress_count < progress_total) {
-      double percentage = static_cast<double>(progress_count) / progress_total;
-      if (percentage >= 0.1 && progress_printed < percentage * 10) {
-        std::cout << "rTorrent: " << progress_count << " torrents ("
-                  << (int)(percentage * 100) << "%) loaded" << std::endl;
-        progress_printed += 2;
-      }
-    }
-  }
-}
-
 void
-load_session_torrents() {
+load_session_torrents(indicators::BlockProgressBar*& progress_bar) {
   utils::Directory entries =
     control->core()->download_store()->get_formated_entries();
 
-  if (!display::Canvas::isInitialized() && entries.size()) {
-    std::cout << "rTorrent: loading " << entries.size()
+  const auto entries_size = entries.size();
+
+  if (!display::Canvas::isInitialized() && entries_size) {
+    std::cout << "rTorrent: loading " << entries_size
               << " entries from session directory" << std::endl;
-    progress_count   = 0;
-    progress_total   = entries.size();
-    progress_printed = 0;
+    if (isatty(fileno(stdin)) && isatty(fileno(stdout))) {
+      using namespace indicators;
+      progress_bar = new BlockProgressBar{
+        option::BarWidth{ 50 },
+        option::ForegroundColor{ Color::white },
+        option::FontStyles{ std::vector<FontStyle>{ FontStyle::bold } },
+        option::MaxProgress{ entries_size }
+      };
+    }
   }
 
   for (utils::Directory::const_iterator first = entries.begin(),
@@ -163,7 +155,9 @@ load_session_torrents() {
     // would be overwritten anyway on exit, and thus not really be
     // useful.
     if (!first->is_file()) {
-      print_progress();
+      if (progress_bar != nullptr) {
+        progress_bar->tick();
+      }
       continue;
     }
 
@@ -171,8 +165,16 @@ load_session_torrents() {
 
     // Replace with session torrent flag.
     f->set_session(true);
-    f->slot_finished([f]() {
-      print_progress();
+    f->slot_finished([f, &progress_bar, entries_size]() {
+      if (control->is_shutdown_received()) {
+        throw std::runtime_error("shutdown received. aborting...");
+      }
+      if (progress_bar != nullptr) {
+        progress_bar->tick();
+        progress_bar->set_option(indicators::option::PostfixText{
+          std::to_string(progress_bar->current()) + "/" +
+          std::to_string(entries_size) });
+      }
       delete f;
     });
     f->load(entries.path() + first->d_name);
@@ -330,6 +332,8 @@ main(int argc, char** argv) {
       "method.insert = event.download.hash_final_failed,multi|rlookup|static\n"
       "method.insert = event.download.hash_removed,multi|rlookup|static\n"
       "method.insert = event.download.hash_queued,multi|rlookup|static\n"
+      "method.insert = event.download.active,multi|rlookup|static\n"
+      "method.insert = event.download.inactive,multi|rlookup|static\n"
 
       "method.set_key = event.download.inserted,         1_send_scrape, "
       "((d.tracker.send_scrape,30))\n"
@@ -356,6 +360,8 @@ main(int argc, char** argv) {
       "method.set_key = event.download.hash_done, !_timestamp, "
       "{(branch,((d.complete)),((d.timestamp.finished.set_if_z,(system.time))))"
       "}\n"
+      "method.set_key = event.download.inactive,  !_timestamp, "
+      "((d.timestamp.last_active.set, ((system.time)) ))\n"
 
       "method.insert.c_simple = group.insert_persistent_view,"
       "((view.add,((argument.0)))),((view.persistent,((argument.0)))),((group."
@@ -611,7 +617,8 @@ main(int argc, char** argv) {
     // Load session torrents and perform scheduled tasks to ensure
     // session torrents are loaded before arg torrents.
     control->dht_manager()->load_dht_cache();
-    load_session_torrents();
+    indicators::BlockProgressBar* progress_bar = nullptr;
+    load_session_torrents(progress_bar);
     torrent::utils::priority_queue_perform(&taskScheduler, cachedTime);
 
     load_arg_torrents(argv + firstArg, argv + argc);
@@ -628,6 +635,11 @@ main(int argc, char** argv) {
                              rpc::make_target(),
                              "startup_done",
                              "System startup_done event action failed: ");
+
+    if (progress_bar != nullptr) {
+      progress_bar->mark_as_completed();
+      delete progress_bar;
+    }
 
     if (!display::Canvas::isInitialized()) {
       std::cout << "rTorrent: started, "

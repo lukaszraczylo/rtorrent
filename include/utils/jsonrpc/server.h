@@ -45,11 +45,11 @@ public:
             result.push_back(std::move(res));
           }
         }
-        return result.dump();
+        return result.dump(-1, ' ', false, json::error_handler_t::replace);
       } else if (request.is_object()) {
         json res = HandleSingleRequest(request);
         if (!res.is_null()) {
-          return res.dump();
+          return res.dump(-1, ' ', false, json::error_handler_t::replace);
         } else {
           return "";
         }
@@ -68,6 +68,14 @@ public:
         { "error",
           { { "code", -32700 },
             { "message", std::string("parse error: ") + e.what() } } },
+        { "jsonrpc", "2.0" }
+      }.dump();
+    } catch (json::exception& e) {
+      return json{
+        { "id", nullptr },
+        { "error",
+          { { "code", -32700 },
+            { "message", std::string("compose error: ") + e.what() } } },
         { "jsonrpc", "2.0" }
       }.dump();
     }
@@ -131,9 +139,11 @@ private:
       request["params"] = json::array();
     }
 
+    const auto& result = m_handler(request["method"], request["params"]);
+
     return { { "jsonrpc", "2.0" },
              { "id", request["id"] },
-             { "result", m_handler(request["method"], request["params"]) } };
+             { "result", result } };
   }
 };
 }

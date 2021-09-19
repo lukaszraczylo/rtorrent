@@ -2,6 +2,8 @@
 // Copyright (C) 2005-2011, Jari Sundell <jaris@ifi.uio.no>
 
 #include <cstdio>
+#include <filesystem>
+#include <fstream>
 #include <functional>
 #include <limits>
 #include <torrent/common.h>
@@ -75,7 +77,7 @@ rpc_find_file(core::Download* download, uint32_t index) {
   if (index >= download->file_list()->size_files())
     return nullptr;
 
-  return (*download->file_list())[index];
+  return download->file_list()->at(index);
 }
 
 // Ergh... time to update the Tracker API to allow proper ptrs.
@@ -194,8 +196,25 @@ apply_scgi(const std::string& arg, int type) {
       default:
         path = torrent::utils::path_expand(arg);
 
+        // Try to avoid removing socket opened by another instance
+        if (std::filesystem::is_socket(path) &&
+            std::filesystem::exists("/proc/net/unix")) {
+          try {
+            auto        list = std::ifstream("/proc/net/unix");
+            std::string entry;
+            while (std::getline(list, entry)) {
+              if (entry.find(path) != std::string::npos) {
+                throw torrent::input_error("Socket already in use.");
+              }
+            }
+          } catch (std::ios_base::failure&) {
+            // do nothing.
+          }
+        }
+
         unlink(path.c_str());
         scgi->open_named(path);
+
         break;
     }
 

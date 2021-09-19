@@ -1,34 +1,6 @@
-load("@bazel_skylib//lib:selects.bzl", "selects")
 load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_test")
-load("@rules_foreign_cc//tools/build_defs:configure.bzl", "configure_make")
 load("@rules_foreign_cc//tools/build_defs:cmake.bzl", "cmake_external")
 load("@rules_pkg//:pkg.bzl", "pkg_deb", "pkg_tar")
-
-config_setting(
-    name = "macos_x86_64",
-    values = {
-        "apple_platform_type": "macos",
-        "cpu": "darwin",
-    },
-    visibility = ["//visibility:private"],
-)
-
-config_setting(
-    name = "macos_arm64",
-    values = {
-        "apple_platform_type": "macos",
-        "cpu": "darwin_arm64",
-    },
-    visibility = ["//visibility:private"],
-)
-
-selects.config_setting_group(
-    name = "macos",
-    match_any = [
-        ":macos_x86_64",
-        ":macos_arm64",
-    ],
-)
 
 config_setting(
     name = "opt",
@@ -87,44 +59,6 @@ filegroup(
     ),
 )
 
-configure_make(
-    name = "xmlrpc",
-    configure_env_vars = select({
-        "//:macos": {
-            "AR": "",
-        },
-        "//conditions:default": {},
-    }),
-    configure_in_place = True,
-    configure_options = [
-        "--disable-wininet-client",
-        "--disable-curl-client",
-        "--disable-libwww-client",
-        "--disable-abyss-server",
-        "--disable-cgi-server",
-        "--disable-cplusplus",
-    ],
-    lib_source = "@xmlrpc//:all",
-    make_commands = select({
-        "//:macos": [
-            "CFLAGS='-fpic -D_DARWIN_C_SOURCE' make",
-            "make install",
-        ],
-        "//conditions:default": [
-            "CFLAGS='-fpic' make",
-            "make install",
-        ],
-    }),
-    static_libraries = [
-        "libxmlrpc_server.a",
-        "libxmlrpc.a",
-        "libxmlrpc_xmlparse.a",
-        "libxmlrpc_xmltok.a",
-        "libxmlrpc_util.a",
-    ],
-    visibility = ["//visibility:public"],
-)
-
 cc_library(
     name = "rtorrent_common",
     srcs = glob(
@@ -134,7 +68,7 @@ cc_library(
     copts = COPTS,
     includes = ["include"],
     linkopts = LINKOPTS + select({
-        "//:macos": [
+        "@platforms//os:macos": [
             "-lxml2",
             "-liconv",
             "-lncurses",
@@ -148,10 +82,10 @@ cc_library(
         "//:buildinfo",
         "@curl",
         "@json",
-        "xmlrpc",
+        "@xmlrpc",
         "@libtorrent//:torrent",
     ] + select({
-        "//:macos": [],
+        "@platforms//os:macos": [],
         "//conditions:default": [
             "@ncurses//:ncursesw",
         ],
@@ -181,6 +115,7 @@ cc_test(
     copts = COPTS,
     includes = ["include"],
     linkopts = LINKOPTS,
+    linkstatic = True,
     deps = [
         "//:rtorrent_common",
         "@com_google_googletest//:gtest",
